@@ -1,0 +1,11 @@
+# MarkovMIDI - Development Dependencies
+
+# Include production dependencies
+-r requirements.txt
+
+# Testing framework
+pytest>=8.0.0
+pytest-cov>=4.1.0
+
+# Type checking
+mypy>=1.8.0

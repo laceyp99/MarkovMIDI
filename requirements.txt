@@ -1,0 +1,13 @@
+# MarkovMIDI - Production Dependencies
+
+# MIDI file handling
+mido>=1.3.0
+
+# Music theory analysis
+music21>=9.1.0
+
+# Web UI framework
+gradio>=4.0.0
+
+# Numerical operations for probability calculations
+numpy>=1.26.0

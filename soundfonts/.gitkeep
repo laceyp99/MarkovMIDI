@@ -1,0 +1,4 @@
+# This directory contains SoundFont (.sf2) files for audio preview.
+# Place your .sf2 files here to enable FluidSynth audio synthesis.
+# 
+# Recommended: Download a General MIDI SoundFont like FluidR3_GM.sf2
