@@ -15,11 +15,8 @@ def main() -> NoReturn | None:
     MIDI loops using Markov chains.
     """
     # TODO: Import and launch the Gradio UI once implemented
-    print("MarkovMIDI v0.1.0")
-    print("Web UI not yet implemented. Coming in Phase 7!")
-    print("\nProject structure is ready. Next steps:")
-    print("  - Phase 2: Implement utils/music_theory.py and utils/quantize.py")
-    print("  - Phase 3: Implement model/markov_chain.py")
+    print("MarkovMIDI v0.0.1")
+    print("Web UI not yet implemented")
     return None
 
 
