@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import random
 from collections import defaultdict
-from typing import Generic, TypeVar, Hashable
+from typing import Generic, TypeVar, Hashable, Any
 
 import numpy as np
 
@@ -368,7 +368,7 @@ class MarkovChain(Generic[S]):
         for s in context:
             self.states.add(s)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """
         Serialize the chain to a dictionary for JSON persistence.
 
@@ -391,7 +391,7 @@ class MarkovChain(Generic[S]):
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "MarkovChain[S]":
+    def from_dict(cls, data: dict[str, Any]) -> "MarkovChain[S]":
         """
         Deserialize a chain from a dictionary.
 

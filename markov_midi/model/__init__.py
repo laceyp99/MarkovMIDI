@@ -6,6 +6,8 @@ and melodies, theory priors, reward system, and persistence utilities.
 """
 
 from markov_midi.model.markov_chain import MarkovChain
+from markov_midi.model.chord_model import ChordModel, ChordEvent, ChordSequence
+from markov_midi.model.melody_model import MelodyModel, MelodyNote, MelodySequence
 
 from markov_midi.model.theory_priors import (
     # Constants
@@ -27,8 +29,16 @@ from markov_midi.model.theory_priors import (
 )
 
 __all__: list[str] = [
-    # Core class
+    # Core classes
     "MarkovChain",
+    # Chord model
+    "ChordModel",
+    "ChordEvent",
+    "ChordSequence",
+    # Melody model
+    "MelodyModel",
+    "MelodyNote",
+    "MelodySequence",
     # Constants
     "CHORD_DEGREES",
     "CHORD_TRANSITION_WEIGHTS",
