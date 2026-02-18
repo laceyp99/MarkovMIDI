@@ -4,31 +4,40 @@ MarkovMIDI package entry point.
 Allows running the package directly with: python -m markov_midi
 """
 
-from typing import NoReturn
 import argparse
 
 
-def main() -> NoReturn | None:
+def main() -> None:
     """
     Main entry point for the MarkovMIDI application.
 
     Launches the Gradio web UI for generating and training
     MIDI loops using Markov chains.
     """
-
     parser = argparse.ArgumentParser(
         prog="markov_midi",
-        description="Generate MIDI music loops using Markov chains"
+        description="Generate MIDI music loops using Markov chains",
+    )
+    parser.add_argument("--version", action="version", version="MarkovMIDI v0.1.0")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=7860,
+        help="Port to run the web UI on (default: 7860)",
     )
     parser.add_argument(
-        "--version", action="version", version="MarkovMIDI 0.0.1"
+        "--share",
+        action="store_true",
+        help="Create a public shareable link",
     )
     args = parser.parse_args()
 
-    # TODO: Import and launch the Gradio UI once implemented
-    print(f"MarkovMIDI version {args.version} launched")
-    print("Web UI not yet implemented")
-    return None
+    print("MarkovMIDI v0.1.0")
+    print("Starting web UI...")
+
+    from markov_midi.ui import launch
+
+    launch(server_port=args.port, share=args.share)
 
 
 if __name__ == "__main__":

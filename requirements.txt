@@ -11,3 +11,6 @@ gradio>=4.0.0
 
 # Numerical operations for probability calculations
 numpy>=1.26.0
+
+# Interactive visualization for piano roll display
+plotly>=5.18.0

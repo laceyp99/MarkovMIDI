@@ -61,5 +61,6 @@ module = [
     "mido.*",
     "music21.*",
     "gradio.*",
+    "plotly.*",
 ]
 ignore_missing_imports = true
