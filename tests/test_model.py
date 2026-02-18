@@ -10,6 +10,7 @@ import random
 
 import pytest
 
+from markov_midi.generator.loop_generator import LoopGenerator, GenerationParams
 from markov_midi.model.markov_chain import MarkovChain
 from markov_midi.model.theory_priors import (
     CHORD_DEGREES,
@@ -21,6 +22,13 @@ from markov_midi.model.theory_priors import (
     create_melody_pitch_chain,
     create_melody_rhythm_chain,
     create_all_chains,
+)
+from markov_midi.model.reward import (
+    RewardSensitivity,
+    SENSITIVITY_MULTIPLIERS,
+    Rating,
+    GenerationRecord,
+    RewardManager,
 )
 
 
@@ -860,3 +868,190 @@ class TestMelodyModelSerialization:
         model = MelodyModel()
         rep = repr(model)
         assert "MelodyModel" in rep
+
+# =============================================================================
+# Reward System Tests
+# =============================================================================
+
+
+class TestRating:
+    """Tests for Rating dataclass."""
+
+    def test_default_rating(self) -> None:
+        """Default rating is neutral (3 stars)."""
+        rating = Rating()
+        assert rating.overall == 3
+        assert rating.melodic == 3
+
+    def test_custom_rating(self) -> None:
+        """Custom ratings are stored."""
+        rating = Rating(overall=5, melodic=4, harmonic=5, rhythmic=3, cohesion=4)
+        assert rating.overall == 5
+        assert rating.harmonic == 5
+
+    def test_invalid_rating_raises(self) -> None:
+        """Invalid ratings raise ValueError."""
+        with pytest.raises(ValueError):
+            Rating(overall=0)
+        with pytest.raises(ValueError):
+            Rating(melodic=6)
+
+    def test_to_chord_reward_positive(self) -> None:
+        """High ratings give positive chord reward."""
+        rating = Rating(overall=5, melodic=5, harmonic=5, rhythmic=5, cohesion=5)
+        reward = rating.to_chord_reward()
+        assert reward > 0
+
+    def test_to_chord_reward_negative(self) -> None:
+        """Low ratings give negative chord reward."""
+        rating = Rating(overall=1, melodic=1, harmonic=1, rhythmic=1, cohesion=1)
+        reward = rating.to_chord_reward()
+        assert reward < 0
+
+    def test_to_chord_reward_neutral(self) -> None:
+        """Neutral ratings give zero reward."""
+        rating = Rating()  # All 3s
+        reward = rating.to_chord_reward()
+        assert reward == 0
+
+    def test_to_melody_reward(self) -> None:
+        """Melody reward calculated correctly."""
+        rating = Rating(melodic=5)  # High melodic
+        reward = rating.to_melody_reward()
+        assert reward > 0
+
+    def test_serialization(self) -> None:
+        """Rating can be serialized and deserialized."""
+        rating = Rating(overall=4, melodic=5, harmonic=3, rhythmic=4, cohesion=5)
+        data = rating.to_dict()
+        restored = Rating.from_dict(data)
+
+        assert restored.overall == rating.overall
+        assert restored.melodic == rating.melodic
+
+
+class TestRewardSensitivity:
+    """Tests for RewardSensitivity."""
+
+    def test_sensitivity_values(self) -> None:
+        """All sensitivity levels have multipliers."""
+        assert RewardSensitivity.GENTLE in SENSITIVITY_MULTIPLIERS
+        assert RewardSensitivity.MODERATE in SENSITIVITY_MULTIPLIERS
+        assert RewardSensitivity.AGGRESSIVE in SENSITIVITY_MULTIPLIERS
+
+    def test_multiplier_ordering(self) -> None:
+        """Aggressive > Moderate > Gentle."""
+        assert (
+            SENSITIVITY_MULTIPLIERS[RewardSensitivity.AGGRESSIVE]
+            > SENSITIVITY_MULTIPLIERS[RewardSensitivity.MODERATE]
+            > SENSITIVITY_MULTIPLIERS[RewardSensitivity.GENTLE]
+        )
+
+
+class TestGenerationRecord:
+    """Tests for GenerationRecord."""
+
+    def test_create_record(self) -> None:
+        """Can create a generation record."""
+        record = GenerationRecord()
+        assert record.generation_id is not None
+        assert record.timestamp is not None
+
+    def test_serialization(self) -> None:
+        """Record can be serialized and deserialized."""
+        record = GenerationRecord(
+            params={"key": "C", "mode": "major"},
+            chord_transitions=[((1, 4), 5)],
+            rating=Rating(overall=4),
+        )
+        data = record.to_dict()
+        restored = GenerationRecord.from_dict(data)
+
+        assert restored.params == record.params
+        assert restored.rating is not None
+        assert restored.rating.overall == 4
+
+
+class TestRewardManager:
+    """Tests for RewardManager."""
+
+    def test_init_default(self) -> None:
+        """Default manager has moderate sensitivity."""
+        manager = RewardManager()
+        assert manager.sensitivity == RewardSensitivity.MODERATE
+
+    def test_init_custom_sensitivity(self) -> None:
+        """Can set custom sensitivity."""
+        manager = RewardManager(sensitivity=RewardSensitivity.AGGRESSIVE)
+        assert manager.sensitivity == RewardSensitivity.AGGRESSIVE
+
+    def test_record_generation(self) -> None:
+        """Can record a generation."""
+        manager = RewardManager()
+        generator = LoopGenerator()
+        params = GenerationParams()
+        loop = generator.generate(params)
+
+        record = manager.record_generation(loop, params)
+
+        assert record.generation_id in manager._generation_map
+        assert len(manager.history) == 1
+
+    def test_apply_rating(self) -> None:
+        """Can apply a rating."""
+        manager = RewardManager()
+        generator = LoopGenerator()
+        params = GenerationParams()
+        loop = generator.generate(params)
+
+        record = manager.record_generation(loop, params)
+        rating = Rating(overall=5, melodic=5, harmonic=5, rhythmic=5, cohesion=5)
+
+        success = manager.apply_rating(record.generation_id, rating, generator)
+
+        assert success
+        assert record.rating is not None
+        assert record.rating.overall == 5
+
+    def test_apply_rating_not_found(self) -> None:
+        """Returns False for unknown generation."""
+        manager = RewardManager()
+        generator = LoopGenerator()
+        rating = Rating()
+
+        success = manager.apply_rating("unknown", rating, generator)
+        assert not success
+
+    def test_get_statistics(self) -> None:
+        """Can get statistics."""
+        manager = RewardManager()
+        stats = manager.get_statistics()
+
+        assert "total_generations" in stats
+        assert "rated_generations" in stats
+
+    def test_clear_history(self) -> None:
+        """Can clear history."""
+        manager = RewardManager()
+        generator = LoopGenerator()
+        params = GenerationParams()
+        loop = generator.generate(params)
+        manager.record_generation(loop, params)
+
+        manager.clear_history()
+
+        assert len(manager.history) == 0
+
+    def test_serialization(self) -> None:
+        """Manager can be serialized and deserialized."""
+        manager = RewardManager(sensitivity=RewardSensitivity.GENTLE)
+        generator = LoopGenerator()
+        params = GenerationParams()
+        loop = generator.generate(params)
+        manager.record_generation(loop, params)
+
+        data = manager.to_dict()
+        restored = RewardManager.from_dict(data)
+
+        assert restored.sensitivity == RewardSensitivity.GENTLE
+        assert len(restored.history) == 1

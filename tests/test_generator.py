@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+import mido
+
 from markov_midi.model.chord_model import ChordEvent, ChordSequence
 from markov_midi.model.melody_model import MelodyNote, MelodySequence
 from markov_midi.generator.voicing import (
@@ -41,6 +43,16 @@ from markov_midi.generator.loop_generator import (
     GenerationParams,
     GeneratedLoop,
     LoopGenerator,
+)
+from markov_midi.parser.midi_loader import (
+    ParsedNote,
+    ParsedTrack,
+    ParsedMidi,
+    parse_midi_file,
+    quantize_parsed_midi,
+    extract_intervals,
+    extract_durations_16ths,
+    notes_to_training_data,
 )
 
 
@@ -607,3 +619,242 @@ class TestLoopGeneratorSerialization:
         generator = LoopGenerator()
         rep = repr(generator)
         assert "LoopGenerator" in rep
+
+
+# =============================================================================
+# Helper: Create test MIDI file
+# =============================================================================
+
+
+def create_test_midi_file(path: Path, notes: list[tuple[int, int, int]]) -> None:
+    """
+    Create a simple MIDI file for testing.
+
+    Args:
+        path: Output path
+        notes: List of (midi_note, start_tick, duration_ticks)
+    """
+    midi_file = mido.MidiFile(ticks_per_beat=480)
+
+    # Tempo track
+    tempo_track = mido.MidiTrack()
+    tempo_track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(120)))
+    tempo_track.append(mido.MetaMessage("end_of_track"))
+    midi_file.tracks.append(tempo_track)
+
+    # Note track
+    note_track = mido.MidiTrack()
+    note_track.append(mido.MetaMessage("track_name", name="Test Track"))
+    note_track.append(mido.Message("program_change", program=0, channel=0))
+
+    # Convert notes to events
+    events: list[tuple[int, str, int]] = []
+    for midi_note, start, duration in notes:
+        events.append((start, "note_on", midi_note))
+        events.append((start + duration, "note_off", midi_note))
+
+    events.sort(key=lambda e: (e[0], 0 if e[1] == "note_off" else 1))
+
+    current_tick = 0
+    for tick, event_type, midi_note in events:
+        delta = tick - current_tick
+        if event_type == "note_on":
+            note_track.append(
+                mido.Message("note_on", note=midi_note, velocity=100, time=delta)
+            )
+        else:
+            note_track.append(
+                mido.Message("note_off", note=midi_note, velocity=0, time=delta)
+            )
+        current_tick = tick
+
+    note_track.append(mido.MetaMessage("end_of_track"))
+    midi_file.tracks.append(note_track)
+
+    midi_file.save(str(path))
+
+
+# =============================================================================
+# MIDI Loader Tests
+# =============================================================================
+
+
+class TestParsedNote:
+    """Tests for ParsedNote dataclass."""
+
+    def test_create_parsed_note(self) -> None:
+        """ParsedNote can be created."""
+        note = ParsedNote(midi=60, start_tick=0, duration_ticks=480)
+        assert note.midi == 60
+        assert note.start_tick == 0
+        assert note.duration_ticks == 480
+
+
+class TestParsedMidi:
+    """Tests for ParsedMidi dataclass."""
+
+    def test_get_all_notes_empty(self) -> None:
+        """Empty ParsedMidi returns empty notes list."""
+        parsed = ParsedMidi()
+        assert parsed.get_all_notes() == []
+
+    def test_get_all_notes_sorted(self) -> None:
+        """Notes are sorted by start time."""
+        track = ParsedTrack(
+            name="Test",
+            notes=[
+                ParsedNote(midi=64, start_tick=480, duration_ticks=480),
+                ParsedNote(midi=60, start_tick=0, duration_ticks=480),
+            ],
+        )
+        parsed = ParsedMidi(tracks=[track])
+        notes = parsed.get_all_notes()
+
+        assert notes[0].start_tick == 0
+        assert notes[1].start_tick == 480
+
+    def test_get_duration_ticks(self) -> None:
+        """Duration is calculated correctly."""
+        track = ParsedTrack(
+            name="Test",
+            notes=[
+                ParsedNote(midi=60, start_tick=0, duration_ticks=480),
+                ParsedNote(midi=64, start_tick=480, duration_ticks=960),
+            ],
+        )
+        parsed = ParsedMidi(tracks=[track], ticks_per_beat=480)
+
+        # Last note ends at 480 + 960 = 1440
+        assert parsed.get_duration_ticks() == 1440
+
+    def test_get_duration_beats(self) -> None:
+        """Duration in beats is calculated correctly."""
+        track = ParsedTrack(
+            name="Test",
+            notes=[ParsedNote(midi=60, start_tick=0, duration_ticks=960)],
+        )
+        parsed = ParsedMidi(tracks=[track], ticks_per_beat=480)
+
+        # 960 ticks / 480 ticks per beat = 2 beats
+        assert parsed.get_duration_beats() == 2.0
+
+
+class TestParseMidiFile:
+    """Tests for MIDI file parsing."""
+
+    def test_parse_simple_file(self) -> None:
+        """Can parse a simple MIDI file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.mid"
+            create_test_midi_file(
+                path,
+                [(60, 0, 480), (64, 480, 480), (67, 960, 480)],
+            )
+
+            parsed = parse_midi_file(path)
+
+            assert parsed.ticks_per_beat == 480
+            assert len(parsed.tracks) == 1
+            assert len(parsed.tracks[0].notes) == 3
+
+    def test_parse_extracts_notes_correctly(self) -> None:
+        """Parses note data correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.mid"
+            create_test_midi_file(path, [(60, 0, 480)])
+
+            parsed = parse_midi_file(path)
+            note = parsed.tracks[0].notes[0]
+
+            assert note.midi == 60
+            assert note.start_tick == 0
+            assert note.duration_ticks == 480
+
+    def test_parse_missing_file_raises(self) -> None:
+        """Raises FileNotFoundError for missing file."""
+        with pytest.raises(FileNotFoundError):
+            parse_midi_file("nonexistent.mid")
+
+
+class TestQuantizeParsedMidi:
+    """Tests for MIDI quantization."""
+
+    def test_quantize_to_16ths(self) -> None:
+        """Quantizes to 16th note grid."""
+        track = ParsedTrack(
+            name="Test",
+            notes=[
+                # Slightly off-grid note
+                ParsedNote(midi=60, start_tick=50, duration_ticks=400),
+            ],
+        )
+        parsed = ParsedMidi(tracks=[track], ticks_per_beat=480)
+
+        quantized = quantize_parsed_midi(parsed, grid_subdivision=16)
+
+        # Grid size = 480 / 4 = 120
+        # 50 rounds to 0, 400 rounds to 360 (3 grid units)
+        note = quantized.tracks[0].notes[0]
+        assert note.start_tick == 0
+        # Duration should be at least one grid unit
+        assert note.duration_ticks >= 120
+
+
+class TestExtractIntervals:
+    """Tests for interval extraction."""
+
+    def test_extract_ascending(self) -> None:
+        """Extracts ascending intervals."""
+        notes = [
+            ParsedNote(midi=60, start_tick=0, duration_ticks=480),
+            ParsedNote(midi=64, start_tick=480, duration_ticks=480),
+            ParsedNote(midi=67, start_tick=960, duration_ticks=480),
+        ]
+        intervals = extract_intervals(notes)
+        assert intervals == [4, 3]  # C to E, E to G
+
+    def test_extract_descending(self) -> None:
+        """Extracts descending intervals."""
+        notes = [
+            ParsedNote(midi=72, start_tick=0, duration_ticks=480),
+            ParsedNote(midi=60, start_tick=480, duration_ticks=480),
+        ]
+        intervals = extract_intervals(notes)
+        assert intervals == [-12]
+
+    def test_empty_with_single_note(self) -> None:
+        """Returns empty list for single note."""
+        notes = [ParsedNote(midi=60, start_tick=0, duration_ticks=480)]
+        assert extract_intervals(notes) == []
+
+
+class TestExtractDurations:
+    """Tests for duration extraction."""
+
+    def test_extract_durations(self) -> None:
+        """Extracts durations in 16th notes."""
+        notes = [
+            # Quarter note (480 ticks = 4 sixteenths)
+            ParsedNote(midi=60, start_tick=0, duration_ticks=480),
+            # Half note (960 ticks = 8 sixteenths)
+            ParsedNote(midi=64, start_tick=480, duration_ticks=960),
+        ]
+        durations = extract_durations_16ths(notes, ticks_per_beat=480)
+        assert durations == [4, 8]
+
+
+class TestNotesToTrainingData:
+    """Tests for training data extraction."""
+
+    def test_returns_both_lists(self) -> None:
+        """Returns intervals and durations."""
+        notes = [
+            ParsedNote(midi=60, start_tick=0, duration_ticks=480),
+            ParsedNote(midi=64, start_tick=480, duration_ticks=480),
+        ]
+        data = notes_to_training_data(notes, ticks_per_beat=480)
+
+        assert "intervals" in data
+        assert "durations" in data
+        assert data["intervals"] == [4]
+        assert data["durations"] == [4, 4]

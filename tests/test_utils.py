@@ -8,6 +8,12 @@ Tests cover:
 
 import pytest
 
+import tempfile
+from pathlib import Path
+
+from markov_midi.model.reward import RewardManager
+from markov_midi.generator.loop_generator import LoopGenerator, GenerationParams
+
 from markov_midi.utils.music_theory import (
     note_to_midi,
     midi_to_note,
@@ -31,6 +37,28 @@ from markov_midi.utils.quantize import (
     ticks_to_bars,
     bars_to_ticks,
     get_bar_length,
+)
+
+from markov_midi.model.persistence import (
+    SessionMetadata,
+    Session,
+    save_session,
+    load_session,
+    create_session_from_generator,
+    restore_session,
+    list_sessions,
+    save_model_only,
+    load_model_only,
+    get_session_path,
+)
+
+from markov_midi.audio.synthesizer import (
+    SynthesizerConfig,
+    Synthesizer,
+    find_fluidsynth,
+    is_fluidsynth_available,
+    find_soundfonts,
+    DEFAULT_SAMPLE_RATE,
 )
 
 
@@ -311,3 +339,231 @@ class TestTickConversions:
     def test_bar_length(self) -> None:
         """Bar length in 4/4 at 480 TPB should be 1920."""
         assert get_bar_length(480, 4) == 1920
+
+# =============================================================================
+# Synthesizer Tests
+# =============================================================================
+
+
+class TestSynthesizerConfig:
+    """Tests for SynthesizerConfig."""
+
+    def test_default_config(self) -> None:
+        """Default config has expected values."""
+        config = SynthesizerConfig()
+        assert config.sample_rate == DEFAULT_SAMPLE_RATE
+        assert config.soundfont_path is None
+
+    def test_custom_config(self) -> None:
+        """Custom config stores values."""
+        config = SynthesizerConfig(
+            soundfont_path="test.sf2",
+            sample_rate=48000,
+            gain=0.8,
+        )
+        assert config.soundfont_path == "test.sf2"
+        assert config.sample_rate == 48000
+        assert config.gain == 0.8
+
+
+class TestSynthesizer:
+    """Tests for Synthesizer class."""
+
+    def test_init_without_soundfont(self) -> None:
+        """Can initialize without soundfont."""
+        synth = Synthesizer()
+        assert synth.config.soundfont_path is None
+
+    def test_set_soundfont(self) -> None:
+        """Can set soundfont after init."""
+        synth = Synthesizer()
+        synth.set_soundfont("piano.sf2")
+        assert synth.config.soundfont_path == "piano.sf2"
+
+    def test_is_available_without_soundfont(self) -> None:
+        """Not available without soundfont."""
+        synth = Synthesizer()
+        # Even if FluidSynth is installed, no soundfont = not available
+        # (unless soundfont is set)
+        assert not synth.is_available()
+
+    def test_repr(self) -> None:
+        """Has string representation."""
+        synth = Synthesizer()
+        rep = repr(synth)
+        assert "Synthesizer" in rep
+
+
+class TestFindSoundfonts:
+    """Tests for soundfont discovery."""
+
+    def test_returns_list(self) -> None:
+        """Returns a list (possibly empty)."""
+        soundfonts = find_soundfonts()
+        assert isinstance(soundfonts, list)
+
+    def test_searches_custom_dir(self) -> None:
+        """Can search custom directories."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a fake soundfont
+            sf_path = Path(tmpdir) / "test.sf2"
+            sf_path.touch()
+
+            soundfonts = find_soundfonts([tmpdir])
+            assert any(sf.name == "test.sf2" for sf in soundfonts)
+
+
+# =============================================================================
+# Persistence Tests
+# =============================================================================
+
+
+class TestSessionMetadata:
+    """Tests for SessionMetadata."""
+
+    def test_default_metadata(self) -> None:
+        """Default metadata has expected values."""
+        meta = SessionMetadata()
+        assert meta.name == "Untitled Session"
+        assert meta.version == "1.0"
+
+    def test_touch_updates_timestamp(self) -> None:
+        """Touch updates updated_at."""
+        meta = SessionMetadata()
+        old_updated = meta.updated_at
+        meta.touch()
+        # Should be updated (might be same if very fast, but shouldn't fail)
+        assert meta.updated_at >= old_updated
+
+    def test_serialization(self) -> None:
+        """Metadata can be serialized."""
+        meta = SessionMetadata(name="Test", description="A test session")
+        data = meta.to_dict()
+        restored = SessionMetadata.from_dict(data)
+
+        assert restored.name == "Test"
+        assert restored.description == "A test session"
+
+
+class TestSession:
+    """Tests for Session."""
+
+    def test_create_session(self) -> None:
+        """Can create a session."""
+        session = Session()
+        assert session.metadata is not None
+
+    def test_serialization(self) -> None:
+        """Session can be serialized."""
+        session = Session(
+            metadata=SessionMetadata(name="Test"),
+            generator_state={"test": "data"},
+        )
+        data = session.to_dict()
+        restored = Session.from_dict(data)
+
+        assert restored.metadata.name == "Test"
+        assert restored.generator_state == {"test": "data"}
+
+
+class TestSaveLoadSession:
+    """Tests for session save/load."""
+
+    def test_save_and_load(self) -> None:
+        """Can save and load a session."""
+        generator = LoopGenerator()
+        manager = RewardManager()
+
+        session = create_session_from_generator(generator, manager, name="Test Session")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.json"
+            save_session(session, path)
+
+            loaded = load_session(path)
+
+            assert loaded.metadata.name == "Test Session"
+
+    def test_restore_session(self) -> None:
+        """Can restore generator and manager from session."""
+        generator = LoopGenerator()
+        manager = RewardManager()
+        params = GenerationParams()
+        loop = generator.generate(params)
+        manager.record_generation(loop, params)
+
+        session = create_session_from_generator(generator, manager)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.json"
+            save_session(session, path)
+
+            loaded = load_session(path)
+            restored_gen, restored_mgr = restore_session(loaded)
+
+            assert restored_gen is not None
+            assert restored_mgr is not None
+            assert len(restored_mgr.history) == 1
+
+    def test_load_missing_file_raises(self) -> None:
+        """Loading missing file raises error."""
+        with pytest.raises(FileNotFoundError):
+            load_session("nonexistent.json")
+
+
+class TestSaveLoadModelOnly:
+    """Tests for model-only save/load."""
+
+    def test_save_and_load_model(self) -> None:
+        """Can save and load just the model."""
+        generator = LoopGenerator()
+        # Train a bit
+        loop = generator.generate()
+        generator.apply_reward(loop, chord_reward=5.0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "model.json"
+            save_model_only(generator, path)
+
+            loaded = load_model_only(path)
+
+            assert loaded is not None
+            assert loaded.chord_model is not None
+
+
+class TestListSessions:
+    """Tests for session listing."""
+
+    def test_list_empty_directory(self) -> None:
+        """Empty directory returns empty list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sessions = list_sessions(tmpdir)
+            assert sessions == []
+
+    def test_list_sessions(self) -> None:
+        """Lists sessions in directory."""
+        generator = LoopGenerator()
+        session = create_session_from_generator(generator, name="Test")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_session(session, Path(tmpdir) / "test.json")
+
+            sessions = list_sessions(tmpdir)
+
+            assert len(sessions) == 1
+            assert sessions[0]["name"] == "Test"
+
+
+class TestGetSessionPath:
+    """Tests for session path generation."""
+
+    def test_simple_name(self) -> None:
+        """Simple name becomes filename."""
+        path = get_session_path("My Session")
+        assert path.name == "My Session.json"
+
+    def test_sanitizes_special_chars(self) -> None:
+        """Special characters are sanitized."""
+        path = get_session_path("Test/Session:Name")
+        assert "/" not in path.name
+        assert ":" not in path.name
