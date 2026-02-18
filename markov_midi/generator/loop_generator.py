@@ -142,12 +142,13 @@ class LoopGenerator:
         params = params or GenerationParams()
         rng = random.Random(seed) if seed is not None else None
 
-        # Generate chord progression
+        # Generate chord progression with position-aware weighting
         chord_sequence = self.chord_model.generate(
             num_bars=params.num_bars,
             beats_per_bar=params.beats_per_bar,
-            start_degree=1,  # Start on tonic
+            start_degree=None,  # Let position_aware pick the start
             end_on_tonic=params.end_on_tonic,
+            position_aware=True,  # Use position-aware weights
             rng=rng,
         )
 
@@ -172,14 +173,19 @@ class LoopGenerator:
         chord_notes = get_all_voiced_notes(voiced_chords)
 
         # Convert melody to voiced notes
-        # Calculate starting MIDI note for melody (root in specified octave)
-        from markov_midi.utils.music_theory import note_to_midi
+        # Get scale pitch classes to ensure melody stays in key
+        from markov_midi.utils.music_theory import (
+            get_scale_pitch_classes,
+            note_to_midi,
+        )
 
+        scale_pitches = get_scale_pitch_classes(params.key, params.mode)
         melody_start_midi = note_to_midi(params.key, params.melody_octave)
         melody_notes = melody_sequence_to_voiced_notes(
             sequence=melody_sequence,
             start_midi=melody_start_midi,
             velocity=params.melody_velocity,
+            scale_pitches=scale_pitches,
         )
 
         # Calculate duration

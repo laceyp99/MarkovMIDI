@@ -349,13 +349,14 @@ class TestTheoryPriorsMelody:
         assert chain.states == set(MELODY_INTERVALS)
 
     def test_stepwise_motion_preferred(self) -> None:
-        """Small intervals should be more likely than large ones."""
+        """Small intervals (scale steps) should be more likely than large ones."""
         chain = create_melody_pitch_chain()
         probs = chain.get_probabilities((0,))  # After unison
 
         # Small intervals (steps) should be more likely than large leaps
+        # Intervals are now scale degrees: ±1, ±2 are steps; ±5, ±6, ±7 are leaps
         step_prob = probs[1] + probs[-1] + probs[2] + probs[-2]
-        large_leap_prob = probs[10] + probs[-10] + probs[11] + probs[-11]
+        large_leap_prob = probs[5] + probs[-5] + probs[6] + probs[-6]
 
         assert step_prob > large_leap_prob
 
@@ -673,24 +674,38 @@ class TestMelodySequence:
         assert len(seq.notes) == 2
 
     def test_to_absolute_pitches(self) -> None:
-        """to_absolute_pitches converts intervals to MIDI."""
+        """to_absolute_pitches converts scale-degree intervals to MIDI.
+
+        With scale degrees in C major (default):
+        - interval 0: stay on same note
+        - interval 2: move 2 scale steps up (C→D→E = 64)
+        - interval -1: move 1 scale step down (E→D = 62)
+        """
         notes = [
-            MelodyNote(interval=0, duration=4, start_time=0),  # First note: 60 + 0 = 60
-            MelodyNote(interval=2, duration=4, start_time=4),  # +2: 60 + 2 = 62
-            MelodyNote(interval=-1, duration=4, start_time=8),  # -1: 62 - 1 = 61
+            MelodyNote(interval=0, duration=4, start_time=0),  # 0: start on C (60)
+            MelodyNote(
+                interval=2, duration=4, start_time=4
+            ),  # +2 scale steps: C→D→E (64)
+            MelodyNote(
+                interval=-1, duration=4, start_time=8
+            ),  # -1 scale step: E→D (62)
         ]
         seq = MelodySequence(notes=notes, total_duration=12)
 
         pitches = seq.to_absolute_pitches(start_midi=60)
-        assert pitches == [60, 62, 61]
+        assert pitches == [60, 64, 62]
 
     def test_to_absolute_pitches_custom_start(self) -> None:
-        """to_absolute_pitches respects start_midi."""
+        """to_absolute_pitches respects start_midi with scale degrees.
+
+        Starting on C3 (48), interval 5 means 5 scale steps up:
+        C→D→E→F→G→A = MIDI 57 (A3)
+        """
         notes = [MelodyNote(interval=5, duration=4, start_time=0)]
         seq = MelodySequence(notes=notes, total_duration=4)
 
         pitches = seq.to_absolute_pitches(start_midi=48)
-        assert pitches == [53]  # 48 + 5
+        assert pitches == [57]  # C3 + 5 scale steps = A3
 
     def test_to_absolute_pitches_clamped(self) -> None:
         """to_absolute_pitches clamps to MIDI range 0-127."""
@@ -707,6 +722,44 @@ class TestMelodySequence:
         seq2 = MelodySequence(notes=notes2, total_duration=4)
         pitches2 = seq2.to_absolute_pitches(start_midi=60)
         assert pitches2[0] >= 0
+
+    def test_all_pitches_in_scale(self) -> None:
+        """All generated pitches must be in the provided scale.
+
+        This is the critical test for the scale-degree interval system.
+        No matter what intervals are used, the output must stay in-key.
+        """
+        # Create a melody with various intervals
+        notes = [
+            MelodyNote(interval=0, duration=4, start_time=0),
+            MelodyNote(interval=3, duration=4, start_time=4),  # Leap up
+            MelodyNote(interval=-2, duration=4, start_time=8),  # Step down
+            MelodyNote(interval=7, duration=4, start_time=12),  # Octave up
+            MelodyNote(interval=-5, duration=4, start_time=16),  # Large leap down
+            MelodyNote(interval=1, duration=4, start_time=20),  # Step up
+        ]
+        seq = MelodySequence(notes=notes, total_duration=24)
+
+        # Test with C major scale
+        c_major = [0, 2, 4, 5, 7, 9, 11]  # C, D, E, F, G, A, B
+        pitches = seq.to_absolute_pitches(start_midi=60, scale_pitches=c_major)
+
+        # Every pitch must have a pitch class that's in the scale
+        for pitch in pitches:
+            pitch_class = pitch % 12
+            assert pitch_class in c_major, (
+                f"Pitch {pitch} (class {pitch_class}) not in C major"
+            )
+
+        # Test with A minor scale
+        a_minor = [9, 11, 0, 2, 4, 5, 7]  # A, B, C, D, E, F, G
+        pitches2 = seq.to_absolute_pitches(start_midi=57, scale_pitches=a_minor)
+
+        for pitch in pitches2:
+            pitch_class = pitch % 12
+            assert pitch_class in a_minor, (
+                f"Pitch {pitch} (class {pitch_class}) not in A minor"
+            )
 
 
 class TestMelodyModelBasics:
@@ -869,6 +922,7 @@ class TestMelodyModelSerialization:
         rep = repr(model)
         assert "MelodyModel" in rep
 
+
 # =============================================================================
 # Reward System Tests
 # =============================================================================
@@ -885,7 +939,14 @@ class TestRating:
 
     def test_custom_rating(self) -> None:
         """Custom ratings are stored."""
-        rating = Rating(overall=5, melodic=4, harmonic=5, rhythmic=3, cohesion=4)
+        rating = Rating(
+            overall=5,
+            melodic=4,
+            harmonic=5,
+            melodic_rhythm=3,
+            harmonic_rhythm=4,
+            cohesion=4,
+        )
         assert rating.overall == 5
         assert rating.harmonic == 5
 
@@ -898,13 +959,27 @@ class TestRating:
 
     def test_to_chord_reward_positive(self) -> None:
         """High ratings give positive chord reward."""
-        rating = Rating(overall=5, melodic=5, harmonic=5, rhythmic=5, cohesion=5)
+        rating = Rating(
+            overall=5,
+            melodic=5,
+            harmonic=5,
+            melodic_rhythm=5,
+            harmonic_rhythm=5,
+            cohesion=5,
+        )
         reward = rating.to_chord_reward()
         assert reward > 0
 
     def test_to_chord_reward_negative(self) -> None:
         """Low ratings give negative chord reward."""
-        rating = Rating(overall=1, melodic=1, harmonic=1, rhythmic=1, cohesion=1)
+        rating = Rating(
+            overall=1,
+            melodic=1,
+            harmonic=1,
+            melodic_rhythm=1,
+            harmonic_rhythm=1,
+            cohesion=1,
+        )
         reward = rating.to_chord_reward()
         assert reward < 0
 
@@ -922,7 +997,14 @@ class TestRating:
 
     def test_serialization(self) -> None:
         """Rating can be serialized and deserialized."""
-        rating = Rating(overall=4, melodic=5, harmonic=3, rhythmic=4, cohesion=5)
+        rating = Rating(
+            overall=4,
+            melodic=5,
+            harmonic=3,
+            melodic_rhythm=4,
+            harmonic_rhythm=4,
+            cohesion=5,
+        )
         data = rating.to_dict()
         restored = Rating.from_dict(data)
 
@@ -1005,7 +1087,14 @@ class TestRewardManager:
         loop = generator.generate(params)
 
         record = manager.record_generation(loop, params)
-        rating = Rating(overall=5, melodic=5, harmonic=5, rhythmic=5, cohesion=5)
+        rating = Rating(
+            overall=5,
+            melodic=5,
+            harmonic=5,
+            melodic_rhythm=5,
+            harmonic_rhythm=5,
+            cohesion=5,
+        )
 
         success = manager.apply_rating(record.generation_id, rating, generator)
 

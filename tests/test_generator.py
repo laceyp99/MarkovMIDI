@@ -295,7 +295,12 @@ class TestMelodySequenceToVoicedNotes:
     """Tests for melody conversion."""
 
     def test_converts_to_voiced_notes(self) -> None:
-        """Melody sequence converts to voiced notes."""
+        """Converts MelodySequence to VoicedNote list.
+
+        With scale degrees in C major (default):
+        - interval 0: stay on C (60)
+        - interval 2: move 2 scale steps up (C→D→E = 64)
+        """
         notes = [
             MelodyNote(interval=0, duration=4, start_time=0),
             MelodyNote(interval=2, duration=4, start_time=4),
@@ -306,7 +311,7 @@ class TestMelodySequenceToVoicedNotes:
 
         assert len(voiced) == 2
         assert voiced[0].midi == 60
-        assert voiced[1].midi == 62
+        assert voiced[1].midi == 64  # 2 scale steps up from C = E
 
     def test_preserves_timing(self) -> None:
         """Timing information is preserved."""

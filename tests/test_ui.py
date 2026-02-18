@@ -203,9 +203,15 @@ class TestApplyRating:
             density="Medium",
         )
 
-        # Use new 5-parameter signature
+        # Use new 6-parameter signature
         state = apply_rating(
-            state, overall=5, melodic=4, harmonic=4, rhythmic=3, cohesion=5
+            state,
+            melodic=4,
+            melodic_rhythm=3,
+            harmonic=4,
+            harmonic_rhythm=3,
+            cohesion=5,
+            overall=5,
         )
 
         assert state.has_unsaved_changes is True
@@ -218,9 +224,15 @@ class TestApplyRating:
         state = create_fresh_state()
         original_history_len = len(state.reward_manager.history)
 
-        # Use new 5-parameter signature
+        # Use new 6-parameter signature
         state = apply_rating(
-            state, overall=5, melodic=4, harmonic=4, rhythmic=3, cohesion=5
+            state,
+            melodic=4,
+            melodic_rhythm=3,
+            harmonic=4,
+            harmonic_rhythm=3,
+            cohesion=5,
+            overall=5,
         )
 
         assert len(state.reward_manager.history) == original_history_len
@@ -253,7 +265,13 @@ class TestSessionManagement:
                 density="Low",
             )
             state = apply_rating(
-                state, overall=4, melodic=4, harmonic=4, rhythmic=4, cohesion=4
+                state,
+                melodic=4,
+                melodic_rhythm=4,
+                harmonic=4,
+                harmonic_rhythm=4,
+                cohesion=4,
+                overall=4,
             )
             state = save_current_session(state, session_dir)
 
@@ -371,7 +389,13 @@ class TestFormatStats:
             density="Medium",
         )
         state = apply_rating(
-            state, overall=4, melodic=4, harmonic=4, rhythmic=4, cohesion=4
+            state,
+            melodic=4,
+            melodic_rhythm=4,
+            harmonic=4,
+            harmonic_rhythm=4,
+            cohesion=4,
+            overall=4,
         )
 
         text = format_stats(state)

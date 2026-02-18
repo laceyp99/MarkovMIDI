@@ -29,7 +29,9 @@ class MelodyNote:
     A melody note with relative pitch and duration.
 
     Attributes:
-        interval: Interval from previous note in semitones (0 = repeat)
+        interval: Interval from previous note in SCALE DEGREES (not semitones).
+                  0 = repeat, +1 = one scale step up, -2 = two scale steps down, etc.
+                  This ensures all generated notes stay in the target key.
         duration: Duration in 16th notes
         start_time: Start time in 16th notes from loop start
     """
@@ -45,7 +47,7 @@ class MelodySequence:
     A sequence of melody notes with metadata.
 
     Attributes:
-        notes: List of MelodyNote objects (relative intervals)
+        notes: List of MelodyNote objects (relative scale-degree intervals)
         total_duration: Total duration in 16th notes
         transitions_used: Transitions used during generation (for reward learning)
     """
@@ -54,24 +56,63 @@ class MelodySequence:
     total_duration: int = 0
     transitions_used: list[tuple[tuple[int, ...], int]] = field(default_factory=list)
 
-    def to_absolute_pitches(self, start_midi: int = 60) -> list[int]:
+    def to_absolute_pitches(
+        self,
+        start_midi: int = 60,
+        scale_pitches: list[int] | None = None,
+    ) -> list[int]:
         """
-        Convert relative intervals to absolute MIDI pitches.
+        Convert relative scale-degree intervals to absolute MIDI pitches.
 
         Args:
-            start_midi: Starting MIDI note number (default 60 = middle C)
+            start_midi: Starting MIDI note number (default 60 = middle C).
+                        This should be the root of the scale in the target octave.
+            scale_pitches: List of 7 MIDI pitch classes (0-11) for the scale.
+                          e.g., C major = [0, 2, 4, 5, 7, 9, 11]
+                          If None, defaults to major scale (chromatic fallback).
 
         Returns:
-            List of MIDI note numbers
+            List of MIDI note numbers, all guaranteed to be in the scale.
         """
+        # Default to major scale pitch classes if not provided
+        if scale_pitches is None:
+            scale_pitches = [0, 2, 4, 5, 7, 9, 11]  # Major scale
+
         pitches: list[int] = []
-        current_pitch = start_midi
+
+        # Calculate base octave and starting scale degree
+        base_octave = start_midi // 12
+        root_pitch_class = start_midi % 12
+
+        # Find which scale degree corresponds to our starting note
+        # (usually 0 = root, but we support starting on any scale tone)
+        try:
+            current_degree = scale_pitches.index(root_pitch_class)
+        except ValueError:
+            # If start_midi isn't in the scale, start on the root
+            current_degree = 0
+
+        current_octave_offset = 0  # How many octaves above/below base
 
         for note in self.notes:
-            current_pitch += note.interval
+            # Move by scale degrees
+            current_degree += note.interval
+
+            # Handle octave wrapping
+            while current_degree >= 7:
+                current_degree -= 7
+                current_octave_offset += 1
+            while current_degree < 0:
+                current_degree += 7
+                current_octave_offset -= 1
+
+            # Calculate absolute MIDI pitch
+            pitch_class = scale_pitches[current_degree]
+            midi_pitch = (base_octave + current_octave_offset) * 12 + pitch_class
+
             # Clamp to valid MIDI range
-            current_pitch = max(0, min(127, current_pitch))
-            pitches.append(current_pitch)
+            midi_pitch = max(0, min(127, midi_pitch))
+            pitches.append(midi_pitch)
 
         return pitches
 
@@ -81,16 +122,22 @@ class MelodyModel:
     Model for generating melodies with rhythms.
 
     Uses two Markov chains:
-    - Pitch chain: Generates intervals in semitones (relative encoding)
+    - Pitch chain: Generates intervals in SCALE DEGREES (not semitones)
     - Rhythm chain: Generates durations in 16th notes
 
-    The relative pitch encoding makes the model key-agnostic - it learns
-    melodic patterns that can be transposed to any key.
+    The scale-degree encoding ensures all generated notes stay in the target key.
+    Intervals are relative steps within the scale:
+    - 0 = repeat the same note
+    - +1 = move up one scale step
+    - -2 = move down two scale steps (a third)
+    - etc.
 
     Example:
         >>> model = MelodyModel()
         >>> sequence = model.generate(num_bars=4)
-        >>> pitches = sequence.to_absolute_pitches(start_midi=60)
+        >>> # Convert to C major pitches
+        >>> c_major = [0, 2, 4, 5, 7, 9, 11]
+        >>> pitches = sequence.to_absolute_pitches(start_midi=60, scale_pitches=c_major)
         >>> for note, pitch in zip(sequence.notes, pitches):
         ...     print(f"MIDI {pitch} at {note.start_time} for {note.duration}")
     """
@@ -186,14 +233,14 @@ class MelodyModel:
             transitions_used=all_transitions,
         )
 
-    def apply_reward(
+    def apply_pitch_reward(
         self,
         transitions: list[tuple[tuple[int, ...], int]],
         reward: float,
         sensitivity: float = 1.0,
     ) -> None:
         """
-        Apply reward to transitions used in generation.
+        Apply reward to melody pitch (interval) transitions only.
 
         Args:
             transitions: List of (context, next_state) tuples from generation
@@ -203,15 +250,53 @@ class MelodyModel:
         delta = reward * sensitivity
 
         for context, next_state in transitions:
-            # Determine which chain based on state values
+            # Only apply to interval transitions
             if next_state in MELODY_INTERVALS:
-                # Check if context looks like intervals
                 if all(c in MELODY_INTERVALS for c in context):
                     ctx = cast(tuple[int, int] | tuple[int], context)
                     self.pitch_chain.update_transition(ctx, next_state, delta)
-            elif next_state in MELODY_RHYTHM_DURATIONS:
+
+    def apply_rhythm_reward(
+        self,
+        transitions: list[tuple[tuple[int, ...], int]],
+        reward: float,
+        sensitivity: float = 1.0,
+    ) -> None:
+        """
+        Apply reward to melody rhythm (duration) transitions only.
+
+        Args:
+            transitions: List of (context, next_state) tuples from generation
+            reward: Reward value (positive = good, negative = bad)
+            sensitivity: Multiplier for reward magnitude
+        """
+        delta = reward * sensitivity
+
+        for context, next_state in transitions:
+            # Only apply to rhythm duration transitions
+            if next_state in MELODY_RHYTHM_DURATIONS:
                 ctx = cast(tuple[int, int] | tuple[int], context)
                 self.rhythm_chain.update_transition(ctx, next_state, delta)
+
+    def apply_reward(
+        self,
+        transitions: list[tuple[tuple[int, ...], int]],
+        reward: float,
+        sensitivity: float = 1.0,
+    ) -> None:
+        """
+        Apply reward to all transitions (both pitch and rhythm).
+
+        This is a convenience method that applies the same reward to both chains.
+        For separate control, use apply_pitch_reward() and apply_rhythm_reward().
+
+        Args:
+            transitions: List of (context, next_state) tuples from generation
+            reward: Reward value (positive = good, negative = bad)
+            sensitivity: Multiplier for reward magnitude
+        """
+        self.apply_pitch_reward(transitions, reward, sensitivity)
+        self.apply_rhythm_reward(transitions, reward, sensitivity)
 
     def reset_to_priors(self) -> None:
         """Reset both chains to theory priors."""

@@ -195,6 +195,41 @@ class TestScales:
         assert degree_to_semitones(3, "minor") == 3  # Minor third
 
 
+class TestScalePitchClasses:
+    """Tests for get_scale_pitch_classes function."""
+
+    def test_c_major_pitch_classes(self) -> None:
+        """C major should return pitch classes 0,2,4,5,7,9,11."""
+        from markov_midi.utils.music_theory import get_scale_pitch_classes
+
+        pitch_classes = get_scale_pitch_classes("C", "major")
+        assert pitch_classes == [0, 2, 4, 5, 7, 9, 11]  # C, D, E, F, G, A, B
+
+    def test_a_minor_pitch_classes(self) -> None:
+        """A minor should return pitch classes 9,11,0,2,4,5,7."""
+        from markov_midi.utils.music_theory import get_scale_pitch_classes
+
+        pitch_classes = get_scale_pitch_classes("A", "minor")
+        assert pitch_classes == [9, 11, 0, 2, 4, 5, 7]  # A, B, C, D, E, F, G
+
+    def test_g_major_pitch_classes(self) -> None:
+        """G major should return pitch classes 7,9,11,0,2,4,6."""
+        from markov_midi.utils.music_theory import get_scale_pitch_classes
+
+        pitch_classes = get_scale_pitch_classes("G", "major")
+        assert pitch_classes == [7, 9, 11, 0, 2, 4, 6]  # G, A, B, C, D, E, F#
+
+    def test_pitch_classes_are_0_to_11(self) -> None:
+        """All pitch classes should be in range 0-11."""
+        from markov_midi.utils.music_theory import get_scale_pitch_classes
+
+        for root in ["C", "D", "E", "F", "G", "A", "B", "F#", "Bb"]:
+            for mode in ["major", "minor"]:
+                pitch_classes = get_scale_pitch_classes(root, mode)
+                assert len(pitch_classes) == 7
+                assert all(0 <= pc <= 11 for pc in pitch_classes)
+
+
 class TestChords:
     """Tests for chord-related functions."""
 
@@ -339,6 +374,7 @@ class TestTickConversions:
     def test_bar_length(self) -> None:
         """Bar length in 4/4 at 480 TPB should be 1920."""
         assert get_bar_length(480, 4) == 1920
+
 
 # =============================================================================
 # Synthesizer Tests

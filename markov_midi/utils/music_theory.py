@@ -266,6 +266,31 @@ def get_scale_notes(root: str, mode: str) -> list[str]:
     return scale_notes
 
 
+def get_scale_pitch_classes(root: str, mode: str) -> list[int]:
+    """
+    Get the MIDI pitch classes (0-11) for each note in a scale.
+
+    This is useful for converting scale-degree intervals to absolute pitches.
+
+    Args:
+        root: Root note of the scale (e.g., "C", "F#")
+        mode: Scale mode ("major" or "minor")
+
+    Returns:
+        List of 7 pitch classes (0-11), one for each scale degree
+
+    Example:
+        >>> get_scale_pitch_classes("C", "major")
+        [0, 2, 4, 5, 7, 9, 11]  # C, D, E, F, G, A, B
+        >>> get_scale_pitch_classes("A", "minor")
+        [9, 11, 0, 2, 4, 5, 7]  # A, B, C, D, E, F, G
+    """
+    intervals = get_scale_intervals(mode)
+    root_pitch_class = get_pitch_class(root)
+
+    return [(root_pitch_class + interval) % 12 for interval in intervals]
+
+
 def degree_to_semitones(degree: int, mode: str) -> int:
     """
     Convert a scale degree (1-7) to semitones from root.

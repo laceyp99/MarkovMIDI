@@ -78,19 +78,23 @@ def melody_sequence_to_voiced_notes(
     sequence: MelodySequence,
     start_midi: int = 60,
     velocity: int = DEFAULT_VELOCITY,
+    scale_pitches: list[int] | None = None,
 ) -> list[VoicedNote]:
     """
     Convert a MelodySequence to VoicedNote objects.
 
     Args:
-        sequence: MelodySequence with relative intervals
-        start_midi: Starting MIDI note number
+        sequence: MelodySequence with relative scale-degree intervals
+        start_midi: Starting MIDI note number (root of scale in target octave)
         velocity: MIDI velocity for all notes
+        scale_pitches: List of 7 MIDI pitch classes (0-11) for the scale.
+                      e.g., C major = [0, 2, 4, 5, 7, 9, 11]
+                      If None, defaults to major scale.
 
     Returns:
-        List of VoicedNote objects with absolute MIDI numbers
+        List of VoicedNote objects with absolute MIDI numbers (all in-key)
     """
-    pitches = sequence.to_absolute_pitches(start_midi)
+    pitches = sequence.to_absolute_pitches(start_midi, scale_pitches)
     voiced_notes: list[VoicedNote] = []
 
     for note, pitch in zip(sequence.notes, pitches):

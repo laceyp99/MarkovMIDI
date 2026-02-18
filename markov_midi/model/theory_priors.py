@@ -45,19 +45,54 @@ CHORD_TRANSITION_WEIGHTS: Final[dict[int, dict[int, float]]] = {
 # Common second-order progressions (gives extra weight to classic patterns)
 # (prev2, prev1) -> {next: extra_weight}
 CHORD_SECOND_ORDER_BOOSTS: Final[dict[tuple[int, int], dict[int, float]]] = {
-    # ii-V-I is very common
-    (2, 5): {1: 3.0},
-    # IV-V-I cadence
-    (4, 5): {1: 2.0},
-    # I-IV-V (common start)
-    (1, 4): {5: 2.0},
-    # I-V-vi (pop progression start)
+    # ii-V-I is very common (jazz/pop standard)
+    (2, 5): {1: 4.0},
+    # IV-V-I cadence (authentic)
+    (4, 5): {1: 3.0},
+    # I-IV-V (common opening)
+    (1, 4): {5: 2.5},
+    # === Pop/Contemporary Progressions ===
+    # I-V-vi-IV (Axis of Awesome - most common pop progression)
+    (1, 5): {6: 4.0},
+    (5, 6): {4: 4.0},
+    (6, 4): {1: 3.5, 5: 2.5},
+    # vi-IV-I-V (same chords, different start)
+    (4, 1): {5: 3.0},
+    # I-vi-IV-V (50s/doo-wop progression)
+    (1, 6): {4: 3.5},
+    (6, 4): {5: 3.0},
+    # I-IV-vi-V (another common variant)
+    (1, 4): {6: 2.5},
+    (4, 6): {5: 3.0},
+    # vi-ii-V-I (circle progression snippet)
+    (6, 2): {5: 2.5},
+    # IV-I-V-vi (Pachelbel-style)
+    (4, 1): {5: 2.0},
     (1, 5): {6: 2.0},
-    # vi-IV-I (pop progression)
-    (6, 4): {1: 2.0, 5: 1.5},
-    # I-vi-IV-V (50s progression)
-    (1, 6): {4: 2.0},
-    (6, 4): {5: 1.5},
+}
+
+# Starting chord weights (first chord of loop)
+# Pop songs commonly start on I, vi, or IV
+CHORD_START_WEIGHTS: Final[dict[int, float]] = {
+    1: 6.0,  # I - most common start (tonic establishes key)
+    6: 4.0,  # vi - pop progressions often start here
+    4: 3.0,  # IV - also common
+    5: 1.0,  # V - rare start but possible
+    2: 1.5,  # ii - occasionally
+    3: 0.5,  # iii - rare
+    7: 0.2,  # vii° - almost never starts a progression
+}
+
+# Ending chord weights (last chord - should prep resolution back to top)
+# Since loops repeat, ending on V or IV creates tension that resolves to I
+CHORD_END_WEIGHTS: Final[dict[int, float]] = {
+    5: 5.0,  # V - dominant, strongest pull to I
+    4: 4.0,  # IV - plagal prep, common in pop
+    2: 2.5,  # ii - pre-dominant function
+    6: 2.0,  # vi - creates nice loop back to I
+    1: 1.0,  # I - already resolved (less tension)
+    7: 1.5,  # vii° - leading tone to I
+    3: 0.5,  # iii - weak ending
 }
 
 
@@ -83,55 +118,63 @@ CHORD_RHYTHM_WEIGHTS: Final[dict[int, dict[int, float]]] = {
 
 
 # =============================================================================
-# Melody Pitch Priors (Intervals)
+# Melody Pitch Priors (Scale-Degree Intervals)
 # =============================================================================
 
-# Intervals in semitones (relative encoding)
-# Range: -12 (octave down) to +12 (octave up), plus 0 (repeat)
-# Using a practical range for melodies
-MELODY_INTERVALS: Final[tuple[int, ...]] = tuple(range(-12, 13))
+# Intervals in scale degrees (relative encoding)
+# Range: -7 (octave down) to +7 (octave up), plus 0 (repeat)
+# These are SCALE STEPS, not semitones - ensures all notes stay in key
+MELODY_INTERVALS: Final[tuple[int, ...]] = tuple(range(-7, 8))
 
 
 # Interval weights - stepwise motion is most common in melodies
 # Based on analysis of folk and pop melodies
 def _build_interval_weights() -> dict[int, dict[int, float]]:
-    """Build interval transition weights favoring stepwise motion."""
+    """Build interval transition weights favoring stepwise motion.
+
+    Intervals are in scale degrees:
+    - 0 = unison (repeated note)
+    - ±1 = step (most common)
+    - ±2 = third
+    - ±3 = fourth
+    - ±4 = fifth
+    - ±5-7 = larger leaps (sixth, seventh, octave)
+    """
     weights: dict[int, dict[int, float]] = {}
 
     for prev_interval in MELODY_INTERVALS:
         weights[prev_interval] = {}
         for next_interval in MELODY_INTERVALS:
-            # Base weight
-            w = 1.0
-
-            # Strongly favor small intervals (stepwise motion)
+            # Base weight based on interval size
             abs_interval = abs(next_interval)
             if abs_interval == 0:
-                w = 3.0  # Repeated notes are common
-            elif abs_interval <= 2:
-                w = 5.0  # Steps (major/minor 2nd)
-            elif abs_interval <= 4:
-                w = 3.0  # Thirds
+                w = 2.5  # Repeated notes - fairly common
+            elif abs_interval == 1:
+                w = 5.0  # Steps - most common in melodies
+            elif abs_interval == 2:
+                w = 3.5  # Thirds - common melodic movement
+            elif abs_interval == 3:
+                w = 2.0  # Fourths - less common
+            elif abs_interval == 4:
+                w = 1.5  # Fifths - occasional
             elif abs_interval == 5:
-                w = 2.5  # Perfect 4th
-            elif abs_interval == 7:
-                w = 2.5  # Perfect 5th
-            elif abs_interval == 12:
-                w = 1.5  # Octave
-            else:
-                w = 0.8  # Larger leaps are less common
+                w = 1.0  # Sixths - rare but used
+            elif abs_interval == 6:
+                w = 0.6  # Sevenths - rare
+            else:  # abs_interval == 7
+                w = 0.8  # Octave - occasional dramatic leap
 
             # Penalize consecutive large leaps in same direction
             if prev_interval != 0 and next_interval != 0:
                 same_direction = (prev_interval > 0) == (next_interval > 0)
-                if same_direction and abs(prev_interval) > 4 and abs_interval > 4:
-                    w *= 0.3
+                if same_direction and abs(prev_interval) >= 3 and abs_interval >= 3:
+                    w *= 0.25  # Strongly discourage
 
-            # After a leap, favor stepwise motion in opposite direction
-            if abs(prev_interval) > 4 and abs_interval <= 2:
+            # After a leap (3+), favor stepwise motion in opposite direction
+            if abs(prev_interval) >= 3 and abs_interval <= 1:
                 opposite = (prev_interval > 0) != (next_interval > 0)
                 if opposite or next_interval == 0:
-                    w *= 1.5
+                    w *= 1.8  # Encourage resolution
 
             weights[prev_interval][next_interval] = w
 

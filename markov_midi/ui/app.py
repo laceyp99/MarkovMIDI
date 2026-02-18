@@ -399,24 +399,26 @@ def render_audio(synthesizer: Synthesizer, midi_path: Path) -> Path | None:
 
 def apply_rating(
     state: AppState,
-    overall: int,
     melodic: int,
+    melodic_rhythm: int,
     harmonic: int,
-    rhythmic: int,
+    harmonic_rhythm: int,
     cohesion: int,
+    overall: int,
 ) -> AppState:
     """Apply a rating to the current generation."""
     if state.current_loop is None or state.current_generation_id is None:
         return state
 
-    # Create rating with all 5 categories
+    # Create rating with all 6 categories
     # Convert 0 (unrated) to 3 (neutral) for the backend
     rating = Rating(
-        overall=overall if overall > 0 else 3,
         melodic=melodic if melodic > 0 else 3,
+        melodic_rhythm=melodic_rhythm if melodic_rhythm > 0 else 3,
         harmonic=harmonic if harmonic > 0 else 3,
-        rhythmic=rhythmic if rhythmic > 0 else 3,
+        harmonic_rhythm=harmonic_rhythm if harmonic_rhythm > 0 else 3,
         cohesion=cohesion if cohesion > 0 else 3,
+        overall=overall if overall > 0 else 3,
     )
 
     result = state.current_loop
@@ -634,11 +636,12 @@ def create_ui(
         state = gr.State(create_fresh_state())
 
         # Rating states (0 = unrated)
-        rating_overall = gr.State(0)
         rating_melodic = gr.State(0)
+        rating_melodic_rhythm = gr.State(0)
         rating_harmonic = gr.State(0)
-        rating_rhythmic = gr.State(0)
+        rating_harmonic_rhythm = gr.State(0)
         rating_cohesion = gr.State(0)
+        rating_overall = gr.State(0)
 
         # Header - Centered title
         gr.HTML("<h1 class='title-centered'>MarkovMIDI</h1>")
@@ -745,32 +748,11 @@ def create_ui(
 
                 # Star rating rows - label + 5 star buttons in single row
                 # Each button shows ☆ (empty) or ★ (filled) based on rating
-
-                # Overall
-                with gr.Row(elem_classes=["rating-row"]):
-                    with gr.Column(scale=1, min_width=100):
-                        gr.Markdown("**Overall**")
-                    with gr.Column(scale=3):
-                        with gr.Row():
-                            overall_btn_1 = gr.Button(
-                                "☆", size="sm", elem_classes=["star-btn"]
-                            )
-                            overall_btn_2 = gr.Button(
-                                "☆", size="sm", elem_classes=["star-btn"]
-                            )
-                            overall_btn_3 = gr.Button(
-                                "☆", size="sm", elem_classes=["star-btn"]
-                            )
-                            overall_btn_4 = gr.Button(
-                                "☆", size="sm", elem_classes=["star-btn"]
-                            )
-                            overall_btn_5 = gr.Button(
-                                "☆", size="sm", elem_classes=["star-btn"]
-                            )
+                # Order: Melodic, Melodic Rhythm, Harmonic, Harmonic Rhythm, Cohesion, Overall
 
                 # Melodic
                 with gr.Row(elem_classes=["rating-row"]):
-                    with gr.Column(scale=1, min_width=100):
+                    with gr.Column(scale=1, min_width=120):
                         gr.Markdown("**Melodic**")
                     with gr.Column(scale=3):
                         with gr.Row():
@@ -790,9 +772,31 @@ def create_ui(
                                 "☆", size="sm", elem_classes=["star-btn"]
                             )
 
+                # Melodic Rhythm
+                with gr.Row(elem_classes=["rating-row"]):
+                    with gr.Column(scale=1, min_width=120):
+                        gr.Markdown("**Melodic Rhythm**")
+                    with gr.Column(scale=3):
+                        with gr.Row():
+                            melodic_rhythm_btn_1 = gr.Button(
+                                "☆", size="sm", elem_classes=["star-btn"]
+                            )
+                            melodic_rhythm_btn_2 = gr.Button(
+                                "☆", size="sm", elem_classes=["star-btn"]
+                            )
+                            melodic_rhythm_btn_3 = gr.Button(
+                                "☆", size="sm", elem_classes=["star-btn"]
+                            )
+                            melodic_rhythm_btn_4 = gr.Button(
+                                "☆", size="sm", elem_classes=["star-btn"]
+                            )
+                            melodic_rhythm_btn_5 = gr.Button(
+                                "☆", size="sm", elem_classes=["star-btn"]
+                            )
+
                 # Harmonic
                 with gr.Row(elem_classes=["rating-row"]):
-                    with gr.Column(scale=1, min_width=100):
+                    with gr.Column(scale=1, min_width=120):
                         gr.Markdown("**Harmonic**")
                     with gr.Column(scale=3):
                         with gr.Row():
@@ -812,31 +816,31 @@ def create_ui(
                                 "☆", size="sm", elem_classes=["star-btn"]
                             )
 
-                # Rhythmic
+                # Harmonic Rhythm
                 with gr.Row(elem_classes=["rating-row"]):
-                    with gr.Column(scale=1, min_width=100):
-                        gr.Markdown("**Rhythmic**")
+                    with gr.Column(scale=1, min_width=120):
+                        gr.Markdown("**Harmonic Rhythm**")
                     with gr.Column(scale=3):
                         with gr.Row():
-                            rhythmic_btn_1 = gr.Button(
+                            harmonic_rhythm_btn_1 = gr.Button(
                                 "☆", size="sm", elem_classes=["star-btn"]
                             )
-                            rhythmic_btn_2 = gr.Button(
+                            harmonic_rhythm_btn_2 = gr.Button(
                                 "☆", size="sm", elem_classes=["star-btn"]
                             )
-                            rhythmic_btn_3 = gr.Button(
+                            harmonic_rhythm_btn_3 = gr.Button(
                                 "☆", size="sm", elem_classes=["star-btn"]
                             )
-                            rhythmic_btn_4 = gr.Button(
+                            harmonic_rhythm_btn_4 = gr.Button(
                                 "☆", size="sm", elem_classes=["star-btn"]
                             )
-                            rhythmic_btn_5 = gr.Button(
+                            harmonic_rhythm_btn_5 = gr.Button(
                                 "☆", size="sm", elem_classes=["star-btn"]
                             )
 
                 # Cohesion
                 with gr.Row(elem_classes=["rating-row"]):
-                    with gr.Column(scale=1, min_width=100):
+                    with gr.Column(scale=1, min_width=120):
                         gr.Markdown("**Cohesion**")
                     with gr.Column(scale=3):
                         with gr.Row():
@@ -856,6 +860,28 @@ def create_ui(
                                 "☆", size="sm", elem_classes=["star-btn"]
                             )
 
+                # Overall
+                with gr.Row(elem_classes=["rating-row"]):
+                    with gr.Column(scale=1, min_width=120):
+                        gr.Markdown("**Overall**")
+                    with gr.Column(scale=3):
+                        with gr.Row():
+                            overall_btn_1 = gr.Button(
+                                "☆", size="sm", elem_classes=["star-btn"]
+                            )
+                            overall_btn_2 = gr.Button(
+                                "☆", size="sm", elem_classes=["star-btn"]
+                            )
+                            overall_btn_3 = gr.Button(
+                                "☆", size="sm", elem_classes=["star-btn"]
+                            )
+                            overall_btn_4 = gr.Button(
+                                "☆", size="sm", elem_classes=["star-btn"]
+                            )
+                            overall_btn_5 = gr.Button(
+                                "☆", size="sm", elem_classes=["star-btn"]
+                            )
+
                 # Submit button
                 submit_btn = gr.Button(
                     "Submit",
@@ -871,24 +897,25 @@ def create_ui(
                 def make_star_click_handler(
                     rating_num: int,
                 ) -> Callable[
-                    [int, int, int, int, int, int],
+                    [int, int, int, int, int, int, int],
                     tuple[int, str, str, str, str, str, dict[str, Any]],
                 ]:
                     """Create a click handler for star button N."""
 
                     def handler(
                         current: int,
-                        o: int,
                         m: int,
+                        mr: int,
                         h: int,
-                        r: int,
+                        hr: int,
                         c: int,
+                        o: int,
                     ) -> tuple[int, str, str, str, str, str, dict[str, Any]]:
                         # Generate button labels for this rating
                         labels = ["★" if i < rating_num else "☆" for i in range(5)]
                         # Check if submit should be enabled (at least one rating > 0)
                         # Note: 'current' is the old value, rating_num is the new value
-                        # We need to check if ANY of the 5 ratings will be > 0 after this click
+                        # We need to check if ANY of the 6 ratings will be > 0 after this click
                         # Since we're setting one of them to rating_num, submit should be enabled
                         return (
                             rating_num,
@@ -901,36 +928,6 @@ def create_ui(
                         )
 
                     return handler
-
-                # Wire up Overall star buttons
-                overall_btns = [
-                    overall_btn_1,
-                    overall_btn_2,
-                    overall_btn_3,
-                    overall_btn_4,
-                    overall_btn_5,
-                ]
-                for i, btn in enumerate(overall_btns, 1):
-                    btn.click(
-                        make_star_click_handler(i),
-                        inputs=[
-                            rating_overall,
-                            rating_overall,
-                            rating_melodic,
-                            rating_harmonic,
-                            rating_rhythmic,
-                            rating_cohesion,
-                        ],
-                        outputs=[
-                            rating_overall,
-                            overall_btn_1,
-                            overall_btn_2,
-                            overall_btn_3,
-                            overall_btn_4,
-                            overall_btn_5,
-                            submit_btn,
-                        ],
-                    )
 
                 # Wire up Melodic star buttons
                 melodic_btns = [
@@ -945,11 +942,12 @@ def create_ui(
                         make_star_click_handler(i),
                         inputs=[
                             rating_melodic,
-                            rating_overall,
                             rating_melodic,
+                            rating_melodic_rhythm,
                             rating_harmonic,
-                            rating_rhythmic,
+                            rating_harmonic_rhythm,
                             rating_cohesion,
+                            rating_overall,
                         ],
                         outputs=[
                             rating_melodic,
@@ -958,6 +956,37 @@ def create_ui(
                             melodic_btn_3,
                             melodic_btn_4,
                             melodic_btn_5,
+                            submit_btn,
+                        ],
+                    )
+
+                # Wire up Melodic Rhythm star buttons
+                melodic_rhythm_btns = [
+                    melodic_rhythm_btn_1,
+                    melodic_rhythm_btn_2,
+                    melodic_rhythm_btn_3,
+                    melodic_rhythm_btn_4,
+                    melodic_rhythm_btn_5,
+                ]
+                for i, btn in enumerate(melodic_rhythm_btns, 1):
+                    btn.click(
+                        make_star_click_handler(i),
+                        inputs=[
+                            rating_melodic_rhythm,
+                            rating_melodic,
+                            rating_melodic_rhythm,
+                            rating_harmonic,
+                            rating_harmonic_rhythm,
+                            rating_cohesion,
+                            rating_overall,
+                        ],
+                        outputs=[
+                            rating_melodic_rhythm,
+                            melodic_rhythm_btn_1,
+                            melodic_rhythm_btn_2,
+                            melodic_rhythm_btn_3,
+                            melodic_rhythm_btn_4,
+                            melodic_rhythm_btn_5,
                             submit_btn,
                         ],
                     )
@@ -975,11 +1004,12 @@ def create_ui(
                         make_star_click_handler(i),
                         inputs=[
                             rating_harmonic,
-                            rating_overall,
                             rating_melodic,
+                            rating_melodic_rhythm,
                             rating_harmonic,
-                            rating_rhythmic,
+                            rating_harmonic_rhythm,
                             rating_cohesion,
+                            rating_overall,
                         ],
                         outputs=[
                             rating_harmonic,
@@ -992,32 +1022,33 @@ def create_ui(
                         ],
                     )
 
-                # Wire up Rhythmic star buttons
-                rhythmic_btns = [
-                    rhythmic_btn_1,
-                    rhythmic_btn_2,
-                    rhythmic_btn_3,
-                    rhythmic_btn_4,
-                    rhythmic_btn_5,
+                # Wire up Harmonic Rhythm star buttons
+                harmonic_rhythm_btns = [
+                    harmonic_rhythm_btn_1,
+                    harmonic_rhythm_btn_2,
+                    harmonic_rhythm_btn_3,
+                    harmonic_rhythm_btn_4,
+                    harmonic_rhythm_btn_5,
                 ]
-                for i, btn in enumerate(rhythmic_btns, 1):
+                for i, btn in enumerate(harmonic_rhythm_btns, 1):
                     btn.click(
                         make_star_click_handler(i),
                         inputs=[
-                            rating_rhythmic,
-                            rating_overall,
+                            rating_harmonic_rhythm,
                             rating_melodic,
+                            rating_melodic_rhythm,
                             rating_harmonic,
-                            rating_rhythmic,
+                            rating_harmonic_rhythm,
                             rating_cohesion,
+                            rating_overall,
                         ],
                         outputs=[
-                            rating_rhythmic,
-                            rhythmic_btn_1,
-                            rhythmic_btn_2,
-                            rhythmic_btn_3,
-                            rhythmic_btn_4,
-                            rhythmic_btn_5,
+                            rating_harmonic_rhythm,
+                            harmonic_rhythm_btn_1,
+                            harmonic_rhythm_btn_2,
+                            harmonic_rhythm_btn_3,
+                            harmonic_rhythm_btn_4,
+                            harmonic_rhythm_btn_5,
                             submit_btn,
                         ],
                     )
@@ -1035,11 +1066,12 @@ def create_ui(
                         make_star_click_handler(i),
                         inputs=[
                             rating_cohesion,
-                            rating_overall,
                             rating_melodic,
+                            rating_melodic_rhythm,
                             rating_harmonic,
-                            rating_rhythmic,
+                            rating_harmonic_rhythm,
                             rating_cohesion,
+                            rating_overall,
                         ],
                         outputs=[
                             rating_cohesion,
@@ -1048,6 +1080,37 @@ def create_ui(
                             cohesion_btn_3,
                             cohesion_btn_4,
                             cohesion_btn_5,
+                            submit_btn,
+                        ],
+                    )
+
+                # Wire up Overall star buttons
+                overall_btns = [
+                    overall_btn_1,
+                    overall_btn_2,
+                    overall_btn_3,
+                    overall_btn_4,
+                    overall_btn_5,
+                ]
+                for i, btn in enumerate(overall_btns, 1):
+                    btn.click(
+                        make_star_click_handler(i),
+                        inputs=[
+                            rating_overall,
+                            rating_melodic,
+                            rating_melodic_rhythm,
+                            rating_harmonic,
+                            rating_harmonic_rhythm,
+                            rating_cohesion,
+                            rating_overall,
+                        ],
+                        outputs=[
+                            rating_overall,
+                            overall_btn_1,
+                            overall_btn_2,
+                            overall_btn_3,
+                            overall_btn_4,
+                            overall_btn_5,
                             submit_btn,
                         ],
                     )
@@ -1127,11 +1190,12 @@ def create_ui(
                 # ----- Submit handler -----
                 def on_submit(
                     state_val: AppState,
-                    r_overall: int,
                     r_melodic: int,
+                    r_melodic_rhythm: int,
                     r_harmonic: int,
-                    r_rhythmic: int,
+                    r_harmonic_rhythm: int,
                     r_cohesion: int,
+                    r_overall: int,
                     key: str,
                     mode: str,
                     length: str,
@@ -1149,12 +1213,8 @@ def create_ui(
                     int,
                     int,
                     int,
-                    int,  # 5 rating states
-                    str,
-                    str,
-                    str,
-                    str,
-                    str,  # overall_btn_1-5
+                    int,
+                    int,  # 6 rating states
                     str,
                     str,
                     str,
@@ -1164,28 +1224,39 @@ def create_ui(
                     str,
                     str,
                     str,
+                    str,  # melodic_rhythm_btn_1-5
+                    str,
+                    str,
+                    str,
+                    str,
                     str,  # harmonic_btn_1-5
                     str,
                     str,
                     str,
                     str,
-                    str,  # rhythmic_btn_1-5
+                    str,  # harmonic_rhythm_btn_1-5
                     str,
                     str,
                     str,
                     str,
                     str,  # cohesion_btn_1-5
+                    str,
+                    str,
+                    str,
+                    str,
+                    str,  # overall_btn_1-5
                     dict[str, Any],  # submit_btn
                 ]:
                     """Handle submit rating and auto-generate next."""
                     # Apply rating
                     state_val = apply_rating(
                         state_val,
-                        r_overall,
                         r_melodic,
+                        r_melodic_rhythm,
                         r_harmonic,
-                        r_rhythmic,
+                        r_harmonic_rhythm,
                         r_cohesion,
+                        r_overall,
                     )
 
                     # Auto-generate next
@@ -1230,12 +1301,8 @@ def create_ui(
                         0,
                         0,
                         0,
-                        0,  # rating states reset
-                        empty,
-                        empty,
-                        empty,
-                        empty,
-                        empty,  # overall btns
+                        0,
+                        0,  # 6 rating states reset
                         empty,
                         empty,
                         empty,
@@ -1245,17 +1312,27 @@ def create_ui(
                         empty,
                         empty,
                         empty,
+                        empty,  # melodic_rhythm btns
+                        empty,
+                        empty,
+                        empty,
+                        empty,
                         empty,  # harmonic btns
                         empty,
                         empty,
                         empty,
                         empty,
-                        empty,  # rhythmic btns
+                        empty,  # harmonic_rhythm btns
                         empty,
                         empty,
                         empty,
                         empty,
                         empty,  # cohesion btns
+                        empty,
+                        empty,
+                        empty,
+                        empty,
+                        empty,  # overall btns
                         gr.update(interactive=False),  # submit_btn
                     )
 
@@ -1263,11 +1340,12 @@ def create_ui(
                     fn=on_submit,
                     inputs=[
                         state,
-                        rating_overall,
                         rating_melodic,
+                        rating_melodic_rhythm,
                         rating_harmonic,
-                        rating_rhythmic,
+                        rating_harmonic_rhythm,
                         rating_cohesion,
+                        rating_overall,
                         key_dropdown,
                         mode_radio,
                         length_radio,
@@ -1282,36 +1360,42 @@ def create_ui(
                         audio_output,
                         midi_download,
                         piano_roll_plot,
-                        rating_overall,
                         rating_melodic,
+                        rating_melodic_rhythm,
                         rating_harmonic,
-                        rating_rhythmic,
+                        rating_harmonic_rhythm,
                         rating_cohesion,
-                        overall_btn_1,
-                        overall_btn_2,
-                        overall_btn_3,
-                        overall_btn_4,
-                        overall_btn_5,
+                        rating_overall,
                         melodic_btn_1,
                         melodic_btn_2,
                         melodic_btn_3,
                         melodic_btn_4,
                         melodic_btn_5,
+                        melodic_rhythm_btn_1,
+                        melodic_rhythm_btn_2,
+                        melodic_rhythm_btn_3,
+                        melodic_rhythm_btn_4,
+                        melodic_rhythm_btn_5,
                         harmonic_btn_1,
                         harmonic_btn_2,
                         harmonic_btn_3,
                         harmonic_btn_4,
                         harmonic_btn_5,
-                        rhythmic_btn_1,
-                        rhythmic_btn_2,
-                        rhythmic_btn_3,
-                        rhythmic_btn_4,
-                        rhythmic_btn_5,
+                        harmonic_rhythm_btn_1,
+                        harmonic_rhythm_btn_2,
+                        harmonic_rhythm_btn_3,
+                        harmonic_rhythm_btn_4,
+                        harmonic_rhythm_btn_5,
                         cohesion_btn_1,
                         cohesion_btn_2,
                         cohesion_btn_3,
                         cohesion_btn_4,
                         cohesion_btn_5,
+                        overall_btn_1,
+                        overall_btn_2,
+                        overall_btn_3,
+                        overall_btn_4,
+                        overall_btn_5,
                         submit_btn,
                     ],
                 )
